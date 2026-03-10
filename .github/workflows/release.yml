@@ -19,10 +19,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
-            platform: darwin
-            arch: arm64
-            platform_name: darwin
           - os: macos-15-intel
             platform: darwin
             arch: x64
@@ -30,10 +26,6 @@ jobs:
           - os: ubuntu-24.04
             platform: linux
             arch: x64
-            platform_name: linux
-          - os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
             platform_name: linux
           - os: windows-2025
             platform: win32

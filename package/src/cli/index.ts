@@ -365,7 +365,7 @@ async function ensureCoreDependencies(
  */
 function getEffectiveCEFDir(
 	platformOS: "macos" | "win" | "linux",
-	platformArch: "arm64" | "x64",
+	platformArch: "x64",
 	cefVersion?: string,
 ): string {
 	if (cefVersion) {
@@ -666,12 +666,12 @@ async function downloadCustomBun(
 
 async function ensureCEFDependencies(
 	targetOS?: "macos" | "win" | "linux",
-	targetArch?: "arm64" | "x64",
+	targetArch?: "x64",
 	cefVersion?: string,
 ): Promise<string> {
 	// Use provided target platform or default to host platform
 	const platformOS = targetOS || OS;
-	const platformArch = targetArch || ARCH;
+	const platformArch = targetArch || "x64";
 
 	// Get platform-specific paths
 	const platformPaths = getPlatformPaths(platformOS, platformArch);
@@ -975,7 +975,7 @@ async function ensureCEFDependencies(
 
 async function ensureWGPUDependencies(
 	targetOS?: "macos" | "win" | "linux",
-	targetArch?: "arm64" | "x64",
+	targetArch?: "x64",
 	wgpuVersion?: string,
 ): Promise<string> {
 	const platformOS = targetOS || OS;
@@ -1146,7 +1146,7 @@ async function ensureWGPUDependencies(
 async function downloadAndExtractCustomCEF(
 	cefVersion: string,
 	platformOS: "macos" | "win" | "linux",
-	platformArch: "arm64" | "x64",
+	platformArch: "x64",
 ) {
 	// Parse "CEF_VERSION+chromium-CHROMIUM_VERSION"
 	const match = cefVersion.match(/^(.+)\+chromium-(.+)$/);
@@ -1160,14 +1160,11 @@ async function downloadAndExtractCustomCEF(
 	const cefVer = match[1]!;
 	const chromiumVer = match[2]!;
 
-	// Map platform names to Spotify CDN naming
+	// Map platform names to Spotify CDN naming (x64 only — CEF 87.x for PepperFlash)
 	const cefPlatformMap: Record<string, string> = {
-		"macos-arm64": "macosarm64",
 		"macos-x64": "macosx64",
 		"win-x64": "windows64",
-		"win-arm64": "windowsarm64",
 		"linux-x64": "linux64",
-		"linux-arm64": "linuxarm64",
 	};
 	const cefPlatform = cefPlatformMap[`${platformOS}-${platformArch}`];
 	if (!cefPlatform) {
@@ -2370,7 +2367,7 @@ Categories=Utility;Application;
 		) {
 			const effectiveCEFDir = await ensureCEFDependencies(
 				currentTarget.os,
-				currentTarget.arch,
+				"x64",
 				config.build.cefVersion,
 			);
 			if (targetOS === "macos") {
@@ -2644,7 +2641,7 @@ Categories=Utility;Application;
 		) {
 			const effectiveWGPUDir = await ensureWGPUDependencies(
 				currentTarget.os,
-				currentTarget.arch,
+				"x64",
 				config.build.wgpuVersion,
 			);
 

@@ -77,66 +77,19 @@ function writeSummary(markdown: string) {
 }
 
 async function main() {
-	const currentCef = CEF_VERSION;
-	const currentChromium = CHROMIUM_VERSION;
-	console.log(`Current:  CEF ${currentCef}  Chromium ${currentChromium}`);
-
-	const latest = await getLatestStableCEFVersion();
-	console.log(
-		`Latest:   CEF ${latest.cef_version}  Chromium ${latest.chromium_version}`,
-	);
-
-	const hasUpdate =
-		currentCef !== latest.cef_version ||
-		currentChromium !== latest.chromium_version;
-
-	// Always emit version outputs
-	setOutput("current_cef_version", currentCef);
-	setOutput("current_chromium_version", currentChromium);
-	setOutput("latest_cef_version", latest.cef_version);
-	setOutput("latest_chromium_version", latest.chromium_version);
-	setOutput("has_update", hasUpdate ? "true" : "false");
-
-	if (hasUpdate) {
-		console.log("Version mismatch — updating src/shared/cef-version.ts");
-
-		const cefVersionPath = resolve(
-			import.meta.dir,
-			"../src/shared/cef-version.ts",
-		);
-		const newContent = [
-			"// Default CEF version shipped with this Electrobun release.",
-			"// All platforms use the same version. Update this single pair when bumping CEF.",
-			`export const CEF_VERSION = \`${latest.cef_version}\`;`,
-			`export const CHROMIUM_VERSION = \`${latest.chromium_version}\`;`,
-			"export const DEFAULT_CEF_VERSION_STRING = `${CEF_VERSION}+chromium-${CHROMIUM_VERSION}`;",
-			"",
-		].join("\n");
-		writeFileSync(cefVersionPath, newContent);
-		console.log(`Wrote ${cefVersionPath}`);
-	} else {
-		console.log("CEF version is up to date.");
-	}
-
-	// Step summary
-	const summary = hasUpdate
-		? [
-				"## CEF Compatibility Check",
-				"",
-				`| | CEF | Chromium |`,
-				`|---|---|---|`,
-				`| **Current** | \`${currentCef}\` | \`${currentChromium}\` |`,
-				`| **Latest** | \`${latest.cef_version}\` | \`${latest.chromium_version}\` |`,
-				"",
-				"New version detected — build step will run.",
-			].join("\n")
-		: [
-				"## CEF Compatibility Check",
-				"",
-				`CEF \`${currentCef}\` is the latest stable version. No build needed.`,
-			].join("\n");
-
-	writeSummary(summary);
+	// CEF version is intentionally pinned to 87.x for PepperFlash plugin support.
+	// Auto-updating is disabled. Do not change without removing PepperFlash dependency.
+	console.log("CEF version is pinned to 87.x for PepperFlash support. Auto-update disabled.");
+	console.log(`Pinned:  CEF ${CEF_VERSION}  Chromium ${CHROMIUM_VERSION}`);
+	setOutput("current_cef_version", CEF_VERSION);
+	setOutput("current_chromium_version", CHROMIUM_VERSION);
+	setOutput("has_update", "false");
+	writeSummary([
+		"## CEF Compatibility Check",
+		"",
+		`CEF version is **pinned** to \`${CEF_VERSION}\` (Chromium \`${CHROMIUM_VERSION}\`) for PepperFlash support.`,
+		"Auto-update is disabled.",
+	].join("\n"));
 }
 
 main().catch((err) => {

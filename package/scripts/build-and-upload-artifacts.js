@@ -74,25 +74,19 @@ console.log(
 	`Building and uploading artifacts for version ${version} (tag: ${tagName})`,
 );
 
-// Get platform and architecture info
+// Get platform info
 const platform = process.platform;
-const arch = process.arch;
 
-// Map Node.js platform/arch to our naming
+// Map Node.js platform to our naming
 const platformMap = {
 	darwin: "darwin",
 	linux: "linux",
 	win32: "win",
 };
 
-const archMap = {
-	x64: "x64",
-	arm64: "arm64",
-};
-
 const platformName = platformMap[platform] || platform;
-// Always use x64 for Windows since we only build x64 Windows binaries
-const archName = platform === "win32" ? "x64" : archMap[arch] || arch;
+// CEF 87.x (PepperFlash) only supports x64 — always use x64 regardless of host arch
+const archName = "x64";
 
 console.log(`Platform: ${platformName}, Architecture: ${archName}`);
 
@@ -122,7 +116,9 @@ if (existingArtifacts.length === 0) {
 }
 
 console.log("\nFound artifacts:");
-existingArtifacts.forEach((artifact) => console.log(`  - ${artifact}`));
+existingArtifacts.forEach((artifact) => {
+	console.log(`  - ${artifact}`);
+});
 
 // Step 3: Check if release exists
 console.log(`\n2. Checking if release ${tagName} exists...`);

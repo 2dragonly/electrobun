@@ -19,14 +19,9 @@ const platformMap = {
 	win32: "win",
 };
 
-const archMap = {
-	x64: "x64",
-	arm64: "arm64",
-};
-
 const platformName = platformMap[platform] || platform;
-// Always use x64 for Windows since we only build x64 Windows binaries
-const archName = platform === "win32" ? "x64" : archMap[arch] || arch;
+// CEF 87.x (PepperFlash) only supports x64 architecture
+const archName = "x64";
 
 console.log(`Packaging Electrobun for ${platformName}-${archName}...`);
 
@@ -86,9 +81,14 @@ if (!fs.existsSync("bin")) {
 	fs.mkdirSync("bin", { recursive: true });
 }
 
-// Use baseline target for Windows to ensure compatibility with ARM64 emulation
+// Use baseline target for Windows to ensure compatibility with ARM64 emulation.
+// On macOS/Linux always target x64 since CEF 87.x (PepperFlash) is x64-only.
 const compileTarget =
-	platform === "win32" ? "--target=bun-windows-x64-baseline" : "";
+	platform === "win32"
+		? "--target=bun-windows-x64-baseline"
+		: platform === "darwin"
+			? "--target=bun-darwin-x64"
+			: "--target=bun-linux-x64";
 const vendoredBun = path.join(
 	"vendors",
 	"bun",
@@ -172,7 +172,9 @@ async function createTarballs() {
 		console.error("This suggests the build failed or was incomplete.");
 		console.error("Contents of dist/:");
 		if (fs.existsSync(distPath)) {
-			fs.readdirSync(distPath).forEach((file) => console.error(`  ${file}`));
+			for (const file of fs.readdirSync(distPath)) {
+				console.error(`  ${file}`);
+			}
 		} else {
 			console.error("  (dist directory does not exist)");
 		}
