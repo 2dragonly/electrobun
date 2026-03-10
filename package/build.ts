@@ -374,7 +374,7 @@ async function checkDependencies() {
 						"Installer",
 						"vswhere.exe",
 					);
-					let out;
+					let out: { exitCode: number; stdout: Buffer };
 					if (existsSync(vswherePath)) {
 						// Use PowerShell wrapper to ensure output is captured correctly on Windows
 						out =
@@ -392,7 +392,7 @@ async function checkDependencies() {
 
 				if (newMissing.length > 0) {
 					missingDeps.length = 0;
-					newMissing.forEach((m) => missingDeps.push(m));
+					missingDeps.push(...newMissing);
 				} else {
 					// clear missingDeps if everything is present now
 					missingDeps.length = 0;
@@ -421,7 +421,9 @@ async function checkDependencies() {
 
 	if (missingDeps.length > 0) {
 		console.error("\n⚠️  Missing required dependencies:");
-		missingDeps.forEach((dep) => console.error(`  • ${dep}`));
+		missingDeps.forEach((dep) => {
+			console.error(`  • ${dep}`);
+		});
 
 		if (OS === "macos") {
 			console.error("\nTo install missing dependencies on macOS:");
@@ -1395,7 +1397,7 @@ async function vendorCEF() {
 			// build CEF wrapper library
 			console.log("Building CEF wrapper library...");
 			const buildArch = ARCH === "arm64" ? "arm64" : "x86_64";
-			await $`cd vendors/cef && rm -rf build && mkdir -p build && cd build && "${CMAKE_BIN}" -DPROJECT_ARCH="${buildArch}" -DCMAKE_BUILD_TYPE=Release .. && make -j8 libcef_dll_wrapper`;
+			await $`cd vendors/cef && rm -rf build && mkdir -p build && cd build && "${CMAKE_BIN}" -DPROJECT_ARCH="${buildArch}" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release .. && make -j8 libcef_dll_wrapper`;
 
 			// Verify the wrapper library was built
 			const wrapperPath = join(
