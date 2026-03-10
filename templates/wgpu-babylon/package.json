@@ -9,11 +9,11 @@
 		"build:canary": "electrobun build --env=canary"
 	},
 	"dependencies": {
-		"electrobun": "file:../../package",
-		"@babylonjs/core": "^7.45.0"
+		"@babylonjs/core": "^7.54.3",
+		"electrobun": "file:../../package"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
-		"typescript": "^5.7.2"
+		"typescript": "^5.9.3"
 	}
 }

@@ -9,11 +9,11 @@
 		"build:canary": "electrobun build --env=canary"
 	},
 	"dependencies": {
-		"electrobun": "file:../../package",
-		"cannon-es": "^0.20.0"
+		"cannon-es": "^0.20.0",
+		"electrobun": "file:../../package"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
-		"typescript": "^5.7.2"
+		"typescript": "^5.9.3"
 	}
 }
