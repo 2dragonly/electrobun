@@ -105,9 +105,9 @@ using electrobun::OperationGuard;
 #include "include/cef_context_menu_handler.h"
 #include "include/cef_keyboard_handler.h"
 #include "include/cef_response_filter.h"
-#include "include/cef_permission_handler.h"
 #include "include/cef_dialog_handler.h"
 #include "include/cef_download_handler.h"
+#include "include/cef_request_context_handler.h"
 #include "include/wrapper/cef_helpers.h"
 
 // CEF dynamic loader for weak linking
@@ -852,7 +852,6 @@ class ElectrobunClient : public CefClient,
                         public CefKeyboardHandler,
                         public CefResourceRequestHandler,
                         public CefLifeSpanHandler,
-                        public CefPermissionHandler,
                         public CefDialogHandler,
                         public CefDownloadHandler,
                         public CefRenderHandler {
@@ -997,10 +996,6 @@ public:
     }
 
     virtual CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override {
-        return this;
-    }
-    
-    virtual CefRefPtr<CefPermissionHandler> GetPermissionHandler() override {
         return this;
     }
     
@@ -1196,7 +1191,6 @@ public:
                 printf("CEF: Opening DevTools...\n");
                 {
                     CefWindowInfo devToolsInfo;
-                    devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
                     browser->GetHost()->ShowDevTools(devToolsInfo, this, CefBrowserSettings(), CefPoint());
                 }
                 return true;
@@ -1225,7 +1219,6 @@ public:
             printf("CEF: F12 pressed - opening DevTools\n");
             {
                 CefWindowInfo devToolsInfo;
-                devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
                 browser->GetHost()->ShowDevTools(devToolsInfo, this, CefBrowserSettings(), CefPoint());
             }
             return true; // Consume the event
@@ -1532,183 +1525,13 @@ public:
         return result;
     }
     
-    // Permission Handler methods for CEF
-    virtual bool OnRequestMediaAccessPermission(
-        CefRefPtr<CefBrowser> browser,
-        CefRefPtr<CefFrame> frame,
-        const CefString& requesting_origin,
-        uint32_t requested_permissions,
-        CefRefPtr<CefMediaAccessCallback> callback) override {
-        
-        std::string origin = requesting_origin.ToString();
-        printf("CEF: Media access permission requested for %s (permissions: %u)\n", origin.c_str(), requested_permissions);
-        
-        // Check cache first
-        PermissionStatus cachedStatus = getPermissionFromCache(origin, PermissionType::USER_MEDIA);
-        
-        if (cachedStatus == PermissionStatus::ALLOWED) {
-            printf("CEF: Using cached permission: User previously allowed media access for %s\n", origin.c_str());
-            callback->Continue(requested_permissions); // Allow all requested permissions
-            return true;
-        } else if (cachedStatus == PermissionStatus::DENIED) {
-            printf("CEF: Using cached permission: User previously blocked media access for %s\n", origin.c_str());
-            callback->Cancel();
-            return true;
-        }
-        
-        // No cached permission, show dialog
-        printf("CEF: No cached permission found for %s, showing dialog\n", origin.c_str());
-        
-        // Create camera/microphone permission dialog
-        std::string message = "This page wants to access your camera and/or microphone.\n\nDo you want to allow this?";
-        std::string title = "Camera & Microphone Access";
-        
-        // Create permission dialog with custom buttons
-        GtkWidget* dialog = gtk_dialog_new_with_buttons(
-            title.c_str(),
-            nullptr,
-            GTK_DIALOG_MODAL,
-            "Allow", GTK_RESPONSE_YES,
-            "Block", GTK_RESPONSE_NO,
-            nullptr
-        );
-        
-        // Add message label
-        GtkWidget* content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
-        GtkWidget* label = gtk_label_new(message.c_str());
-        gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
-        gtk_widget_set_margin_top(label, 10);
-        gtk_widget_set_margin_bottom(label, 10);
-        gtk_widget_set_margin_start(label, 10);
-        gtk_widget_set_margin_end(label, 10);
-        gtk_container_add(GTK_CONTAINER(content_area), label);
-        gtk_widget_show_all(dialog);
-        
-        gtk_window_set_position(GTK_WINDOW(dialog), GTK_WIN_POS_CENTER);
-        
-        // Show dialog and get response
-        gint response = gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
-        
-        // Handle response and cache the decision
-        if (response == GTK_RESPONSE_YES) {
-            callback->Continue(requested_permissions); // Allow all requested permissions
-            cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::ALLOWED);
-            printf("CEF: User allowed media access for %s (cached)\n", origin.c_str());
-        } else {
-            callback->Cancel();
-            cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::DENIED);
-            printf("CEF: User blocked media access for %s (cached)\n", origin.c_str());
-        }
-        
-        return true; // We handled the permission request
-    }
-    
-    virtual bool OnShowPermissionPrompt(
-        CefRefPtr<CefBrowser> browser,
-        uint64_t prompt_id,
-        const CefString& requesting_origin,
-        uint32_t requested_permissions,
-        CefRefPtr<CefPermissionPromptCallback> callback) override {
-        
-        std::string origin = requesting_origin.ToString();
-        printf("CEF: Permission prompt requested for %s (permissions: %u)\n", origin.c_str(), requested_permissions);
-        
-        // Handle different permission types
-        PermissionType permType = PermissionType::OTHER;
-        std::string message = "This page is requesting additional permissions.\n\nDo you want to allow this?";
-        std::string title = "Permission Request";
-        
-        // Check for specific permission types
-        if (requested_permissions & CEF_PERMISSION_TYPE_CAMERA_STREAM ||
-            requested_permissions & CEF_PERMISSION_TYPE_MIC_STREAM) {
-            permType = PermissionType::USER_MEDIA;
-            message = "This page wants to access your camera and/or microphone.\n\nDo you want to allow this?";
-            title = "Camera & Microphone Access";
-        } else if (requested_permissions & CEF_PERMISSION_TYPE_GEOLOCATION) {
-            permType = PermissionType::GEOLOCATION;
-            message = "This page wants to access your location.\n\nDo you want to allow this?";
-            title = "Location Access";
-        } else if (requested_permissions & CEF_PERMISSION_TYPE_NOTIFICATIONS) {
-            permType = PermissionType::NOTIFICATIONS;
-            message = "This page wants to show notifications.\n\nDo you want to allow this?";
-            title = "Notification Permission";
-        }
-        
-        // Check cache first
-        PermissionStatus cachedStatus = getPermissionFromCache(origin, permType);
-        
-        if (cachedStatus == PermissionStatus::ALLOWED) {
-            printf("CEF: Using cached permission: User previously allowed %s for %s\n", title.c_str(), origin.c_str());
-            callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
-            return true;
-        } else if (cachedStatus == PermissionStatus::DENIED) {
-            printf("CEF: Using cached permission: User previously blocked %s for %s\n", title.c_str(), origin.c_str());
-            callback->Continue(CEF_PERMISSION_RESULT_DENY);
-            return true;
-        }
-        
-        // No cached permission, show dialog
-        printf("CEF: No cached permission found for %s, showing dialog\n", origin.c_str());
-        
-        // Create permission dialog with custom buttons
-        GtkWidget* dialog = gtk_dialog_new_with_buttons(
-            title.c_str(),
-            nullptr,
-            GTK_DIALOG_MODAL,
-            "Allow", GTK_RESPONSE_YES,
-            "Block", GTK_RESPONSE_NO,
-            nullptr
-        );
-        
-        // Add message label
-        GtkWidget* content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
-        GtkWidget* label = gtk_label_new(message.c_str());
-        gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
-        gtk_widget_set_margin_top(label, 10);
-        gtk_widget_set_margin_bottom(label, 10);
-        gtk_widget_set_margin_start(label, 10);
-        gtk_widget_set_margin_end(label, 10);
-        gtk_container_add(GTK_CONTAINER(content_area), label);
-        gtk_widget_show_all(dialog);
-        
-        gtk_window_set_position(GTK_WINDOW(dialog), GTK_WIN_POS_CENTER);
-        
-        // Show dialog and get response
-        gint response = gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
-        
-        // Handle response and cache the decision
-        if (response == GTK_RESPONSE_YES) {
-            callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
-            cachePermission(origin, permType, PermissionStatus::ALLOWED);
-            printf("CEF: User allowed %s for %s (cached)\n", title.c_str(), origin.c_str());
-        } else {
-            callback->Continue(CEF_PERMISSION_RESULT_DENY);
-            cachePermission(origin, permType, PermissionStatus::DENIED);
-            printf("CEF: User blocked %s for %s (cached)\n", title.c_str(), origin.c_str());
-        }
-        
-        return true; // We handled the permission request
-    }
-    
-    virtual void OnDismissPermissionPrompt(
-        CefRefPtr<CefBrowser> browser,
-        uint64_t prompt_id,
-        cef_permission_request_result_t result) override {
-        
-        printf("CEF: Permission prompt dismissed with result %d\n", result);
-        // Optional: Handle prompt dismissal if needed
-    }
-    
     // CefDialogHandler methods
     virtual bool OnFileDialog(CefRefPtr<CefBrowser> browser,
                             FileDialogMode mode,
                             const CefString& title,
                             const CefString& default_file_path,
                             const std::vector<CefString>& accept_filters,
-                            const std::vector<CefString>& accept_extensions,
-                            const std::vector<CefString>& accept_descriptions,
+                            int selected_accept_filter,
                             CefRefPtr<CefFileDialogCallback> callback) override {
         
         printf("CEF Linux: File dialog requested - mode: %d\n", static_cast<int>(mode));
@@ -1818,14 +1641,14 @@ public:
         gtk_widget_destroy(dialog);
         
         // Call the callback with results
-        callback->Continue(file_paths);
+        callback->Continue(0, file_paths);
         
         printf("CEF Linux: File dialog completed with %zu files selected\n", file_paths.size());
         return true; // We handled the dialog
     }
 
     // CefDownloadHandler methods
-    bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
+    void OnBeforeDownload(CefRefPtr<CefBrowser> browser,
                           CefRefPtr<CefDownloadItem> download_item,
                           const CefString& suggested_name,
                           CefRefPtr<CefBeforeDownloadCallback> callback) override {
@@ -1880,10 +1703,8 @@ public:
             g_free(destinationPath);
         } else {
             printf("CEF Linux ERROR: Could not determine Downloads directory, using default behavior\n");
-            callback->Continue("", false);
+            callback->Continue(\"\", false);
         }
-
-        return true;  // We handled it
     }
 
     void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
@@ -3738,8 +3559,6 @@ public:
         
         // Create CEF browser immediately as child of X11 window
         CefWindowInfo window_info;
-        // Use Alloy runtime style for embedded windows (like macOS)
-        window_info.runtime_style = CEF_RUNTIME_STYLE_CHROME;
         
         // For child windows, position should be relative to parent (0,0 for fullscreen)
         CefRect cef_rect((int)x, (int)y, (int)width, (int)height);
@@ -4419,7 +4238,7 @@ public:
         }
 
         // Use CEF's native find functionality
-        host->Find(CefString(searchText), forward, matchCase, false);
+        host->Find(0, CefString(searchText), forward, matchCase, false);
     }
 
     void stopFindInPage() override {
@@ -4437,7 +4256,6 @@ public:
         CefRefPtr<CefBrowserHost> host = browser->GetHost();
         if (host) {
             CefWindowInfo devToolsInfo;
-            devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
             host->ShowDevTools(devToolsInfo, nullptr, CefBrowserSettings(), CefPoint());
         }
     }
@@ -4460,7 +4278,6 @@ public:
                 host->CloseDevTools();
             } else {
                 CefWindowInfo devToolsInfo;
-                devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
                 host->ShowDevTools(devToolsInfo, nullptr, CefBrowserSettings(), CefPoint());
             }
         }

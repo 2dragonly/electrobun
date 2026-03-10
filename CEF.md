@@ -19,8 +19,8 @@ Electrobun releases ship 3 tarballs per platform:
 The default CEF version is hardcoded in `package/build.ts`:
 
 ```typescript
-const CEF_VERSION = `144.0.11+ge135be2`;
-const CHROMIUM_VERSION = `144.0.7559.97`;
+const CEF_VERSION = `87.1.14+ga29e9a3`;
+const CHROMIUM_VERSION = `87.0.4280.141`;
 ```
 
 When `bun build.ts` runs, `vendorCEF()` does the following:

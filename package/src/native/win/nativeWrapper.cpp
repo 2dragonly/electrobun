@@ -346,9 +346,9 @@ extern "C" __declspec(dllexport) void asar_close(void* archive) {
 #include "include/cef_command_line.h"
 #include "include/cef_scheme.h"
 #include "include/cef_context_menu_handler.h"
-#include "include/cef_permission_handler.h"
 #include "include/cef_dialog_handler.h"
 #include "include/cef_download_handler.h"
+#include "include/cef_request_context_handler.h"
 #include "include/cef_task.h"
 #include "include/wrapper/cef_helpers.h"
 
@@ -1064,142 +1064,6 @@ private:
     IMPLEMENT_REFCOUNTING(ElectrobunContextMenuHandler);
 };
 
-// CEF Permission Handler for user media and other permissions
-class ElectrobunPermissionHandler : public CefPermissionHandler {
-public:
-    bool OnRequestMediaAccessPermission(
-        CefRefPtr<CefBrowser> browser,
-        CefRefPtr<CefFrame> frame,
-        const CefString& requesting_origin,
-        uint32_t requested_permissions,
-        CefRefPtr<CefMediaAccessCallback> callback) override {
-        
-        std::string origin = requesting_origin.ToString();
-        printf("CEF: Media access permission requested for %s (permissions: %u)\n", origin.c_str(), requested_permissions);
-        
-        // Check cache first
-        PermissionStatus cachedStatus = getPermissionFromCache(origin, PermissionType::USER_MEDIA);
-        
-        if (cachedStatus == PermissionStatus::ALLOWED) {
-            printf("CEF: Using cached permission: User previously allowed media access for %s\n", origin.c_str());
-            callback->Continue(requested_permissions); // Allow all requested permissions
-            return true;
-        } else if (cachedStatus == PermissionStatus::DENIED) {
-            printf("CEF: Using cached permission: User previously blocked media access for %s\n", origin.c_str());
-            callback->Cancel();
-            return true;
-        }
-        
-        // No cached permission, show dialog
-        printf("CEF: No cached permission found for %s, showing dialog\n", origin.c_str());
-        
-        // Show Windows message box
-        std::string message = "This page wants to access your camera and/or microphone.\n\nDo you want to allow this?";
-        std::string title = "Camera & Microphone Access";
-        
-        int result = MessageBoxA(
-            nullptr,
-            message.c_str(),
-            title.c_str(),
-            MB_YESNO | MB_ICONQUESTION | MB_TOPMOST
-        );
-        
-        // Handle response and cache the decision
-        if (result == IDYES) {
-            callback->Continue(requested_permissions); // Allow all requested permissions
-            cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::ALLOWED);
-            printf("CEF: User allowed media access for %s (cached)\n", origin.c_str());
-        } else {
-            callback->Cancel();
-            cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::DENIED);
-            printf("CEF: User blocked media access for %s (cached)\n", origin.c_str());
-        }
-        
-        return true; // We handled the permission request
-    }
-    
-    bool OnShowPermissionPrompt(
-        CefRefPtr<CefBrowser> browser,
-        uint64_t prompt_id,
-        const CefString& requesting_origin,
-        uint32_t requested_permissions,
-        CefRefPtr<CefPermissionPromptCallback> callback) override {
-        
-        std::string origin = requesting_origin.ToString();
-        printf("CEF: Permission prompt requested for %s (permissions: %u)\n", origin.c_str(), requested_permissions);
-        
-        // Handle different permission types
-        PermissionType permType = PermissionType::OTHER;
-        std::string message = "This page is requesting additional permissions.\n\nDo you want to allow this?";
-        std::string title = "Permission Request";
-        
-        // Check for specific permission types
-        if (requested_permissions & CEF_PERMISSION_TYPE_CAMERA_STREAM ||
-            requested_permissions & CEF_PERMISSION_TYPE_MIC_STREAM) {
-            permType = PermissionType::USER_MEDIA;
-            message = "This page wants to access your camera and/or microphone.\n\nDo you want to allow this?";
-            title = "Camera & Microphone Access";
-        } else if (requested_permissions & CEF_PERMISSION_TYPE_GEOLOCATION) {
-            permType = PermissionType::GEOLOCATION;
-            message = "This page wants to access your location.\n\nDo you want to allow this?";
-            title = "Location Access";
-        } else if (requested_permissions & CEF_PERMISSION_TYPE_NOTIFICATIONS) {
-            permType = PermissionType::NOTIFICATIONS;
-            message = "This page wants to show notifications.\n\nDo you want to allow this?";
-            title = "Notification Permission";
-        }
-        
-        // Check cache first
-        PermissionStatus cachedStatus = getPermissionFromCache(origin, permType);
-        
-        if (cachedStatus == PermissionStatus::ALLOWED) {
-            printf("CEF: Using cached permission: User previously allowed %s for %s\n", title.c_str(), origin.c_str());
-            callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
-            return true;
-        } else if (cachedStatus == PermissionStatus::DENIED) {
-            printf("CEF: Using cached permission: User previously blocked %s for %s\n", title.c_str(), origin.c_str());
-            callback->Continue(CEF_PERMISSION_RESULT_DENY);
-            return true;
-        }
-        
-        // No cached permission, show dialog
-        printf("CEF: No cached permission found for %s, showing dialog\n", origin.c_str());
-        
-        // Show Windows message box
-        int result = MessageBoxA(
-            nullptr,
-            message.c_str(),
-            title.c_str(),
-            MB_YESNO | MB_ICONQUESTION | MB_TOPMOST
-        );
-        
-        // Handle response and cache the decision
-        if (result == IDYES) {
-            callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
-            cachePermission(origin, permType, PermissionStatus::ALLOWED);
-            printf("CEF: User allowed %s for %s (cached)\n", title.c_str(), origin.c_str());
-        } else {
-            callback->Continue(CEF_PERMISSION_RESULT_DENY);
-            cachePermission(origin, permType, PermissionStatus::DENIED);
-            printf("CEF: User blocked %s for %s (cached)\n", title.c_str(), origin.c_str());
-        }
-        
-        return true; // We handled the permission request
-    }
-    
-    void OnDismissPermissionPrompt(
-        CefRefPtr<CefBrowser> browser,
-        uint64_t prompt_id,
-        cef_permission_request_result_t result) override {
-        
-        printf("CEF: Permission prompt %I64u dismissed with result %d\n", prompt_id, result);
-        // Optional: Handle prompt dismissal if needed
-    }
-
-private:
-    IMPLEMENT_REFCOUNTING(ElectrobunPermissionHandler);
-};
-
 // Helper functions for string conversion
 std::wstring StringToWString(const std::string& str) {
     if (str.empty()) return std::wstring();
@@ -1253,8 +1117,7 @@ public:
                       const CefString& title,
                       const CefString& default_file_path,
                       const std::vector<CefString>& accept_filters,
-                      const std::vector<CefString>& accept_extensions,
-                      const std::vector<CefString>& accept_descriptions,
+                      int selected_accept_filter,
                       CefRefPtr<CefFileDialogCallback> callback) override {
         
         printf("CEF Windows: File dialog requested - mode: %d\n", static_cast<int>(mode));
@@ -1262,7 +1125,7 @@ public:
         // Run file dialog on main thread using Windows native dialog
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
         if (FAILED(hr)) {
-            callback->Continue(std::vector<CefString>());
+            callback->Continue(0, std::vector<CefString>());
             return true;
         }
         
@@ -1270,7 +1133,7 @@ public:
         hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL, IID_IFileOpenDialog, (void**)&pFileDialog);
         if (FAILED(hr)) {
             CoUninitialize();
-            callback->Continue(std::vector<CefString>());
+            callback->Continue(0, std::vector<CefString>());
             return true;
         }
         
@@ -1386,7 +1249,7 @@ public:
         CoUninitialize();
         
         // Call the callback with results
-        callback->Continue(file_paths);
+        callback->Continue(0, file_paths);
         
         printf("CEF Windows: File dialog completed with %zu files selected\n", file_paths.size());
         return true; // We handled the dialog
@@ -1401,7 +1264,7 @@ class ElectrobunDownloadHandler : public CefDownloadHandler {
 public:
     ElectrobunDownloadHandler() {}
 
-    bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
+    void OnBeforeDownload(CefRefPtr<CefBrowser> browser,
                           CefRefPtr<CefDownloadItem> download_item,
                           const CefString& suggested_name,
                           CefRefPtr<CefBeforeDownloadCallback> callback) override {
@@ -1450,13 +1313,7 @@ public:
             CoTaskMemFree(downloadsPath);
         } else {
             printf("CEF Windows: Could not get Downloads folder, using default behavior\n");
-            callback->Continue("", false);
-        }
-
-        return true;  // We handled it
-    }
-
-    void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
+            callback->Continue(\"\", false);\n        }\n    }\n\n    void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
                            CefRefPtr<CefDownloadItem> download_item,
                            CefRefPtr<CefDownloadItemCallback> callback) override {
         if (download_item->IsComplete()) {
@@ -1746,7 +1603,6 @@ public:
         m_requestHandler->SetWebviewId(webviewId);
         m_requestHandler->SetClient(this); // Set client reference for response filter
         m_contextMenuHandler = new ElectrobunContextMenuHandler();
-        m_permissionHandler = new ElectrobunPermissionHandler();
         m_dialogHandler = new ElectrobunDialogHandler();
         m_downloadHandler = new ElectrobunDownloadHandler();
         m_keyboardHandler = new ElectrobunKeyboardHandler();
@@ -1814,10 +1670,6 @@ public:
     
     CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override {
         return m_contextMenuHandler;
-    }
-    
-    CefRefPtr<CefPermissionHandler> GetPermissionHandler() override {
-        return m_permissionHandler;
     }
     
     CefRefPtr<CefDialogHandler> GetDialogHandler() override {
@@ -2112,7 +1964,6 @@ public:
         CefRect cefRect(0, 0, rect.right - rect.left, rect.bottom - rect.top);
 
         CefWindowInfo windowInfo;
-        windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
         windowInfo.SetAsChild((CefWindowHandle)host.window, cefRect);
 
         CefBrowserSettings settings;
@@ -2171,7 +2022,6 @@ private:
     CefRefPtr<ElectrobunLifeSpanHandler> m_lifeSpanHandler;
     CefRefPtr<ElectrobunRequestHandler> m_requestHandler;
     CefRefPtr<ElectrobunContextMenuHandler> m_contextMenuHandler;
-    CefRefPtr<ElectrobunPermissionHandler> m_permissionHandler;
     CefRefPtr<ElectrobunDialogHandler> m_dialogHandler;
     CefRefPtr<ElectrobunDownloadHandler> m_downloadHandler;
     CefRefPtr<ElectrobunKeyboardHandler> m_keyboardHandler;
@@ -3908,7 +3758,7 @@ public:
         }
 
         // Use CEF's native find functionality
-        host->Find(CefString(searchText), forward, matchCase, false);
+        host->Find(0, CefString(searchText), forward, matchCase, false);
     }
 
     void stopFindInPage() override {
@@ -6682,7 +6532,6 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         
         // Create CEF browser info
         CefWindowInfo windowInfo;
-        windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
         CefRect cefBounds((int)x, (int)y, (int)width, (int)height);
 
         CefBrowserSettings browserSettings;
